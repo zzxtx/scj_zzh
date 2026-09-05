@@ -456,3 +456,54 @@ button {
     opacity: 0;
   }
 }
+
+.post-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.post-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.badge.replies {
+  color: #b4838d;
+  background: #fbeff1;
+}
+
+.badge.new {
+  color: #fff;
+  background: #e2718a;
+}
+
+.badge.new-replies {
+  color: #d15874;
+  background: #ffe3ea;
+}
+
+.nav-unread {
+  display: inline-block;
+  min-width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e2718a;
+  color: #fff;
+  font-size: 12px;
+  margin-left: 4px;
+}

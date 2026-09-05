@@ -163,7 +163,10 @@ function renderHeader(active) {
     el('span', { class: 'heart-btn', text: '❤', onclick: (e) => { e.preventDefault(); e.stopPropagation(); burstHearts(); } }),
   ]),
     el('nav', { class: 'nav' }, [
-      el('a', { href: '#/', class: active === 'list' ? 'active' : '', text: '悄悄话' }),
+      el('a', { href: '#/', class: active === 'list' ? 'active' : '' }, [
+        '悄悄话',
+        el('span', { id: 'nav-unread', class: 'nav-unread hidden' }),
+      ]),
       el('a', { href: '#/write', class: active === 'write' ? 'active' : '', text: '写给你' }),
       el('span', { class: 'who', text: '❤ ' + profile.nickname }),
       el('button', { class: 'link', text: '离开', onclick: doLogout }),
@@ -237,19 +240,76 @@ function renderFilteredList() {
       ? `没有找到关于「${keyword}」的悄悄话 💭`
       : '这个月份还没有悄悄话 🌙';
     list.append(el('p', { class: 'empty', text: tip }));
+    updateUnreadBadge();
     return;
   }
 
+  const seen = loadSeen(currentUser.id);
   for (const post of filtered) {
+    const totalReplies = commentCount(post.id);
+    const isNewPost = post.nickname !== profile.nickname && !seen.seenPosts.includes(post.id);
+    const newReplies = allComments.filter(
+      (c) => c.post_id === post.id && c.nickname !== profile.nickname && !seen.seenComments.includes(c.id)
+    ).length;
+
     list.append(
       el('a', { href: `#/post?id=${post.id}`, class: 'post-item' }, [
         el('div', { class: 'post-preview', text: matchPreview(post, keyword) }),
-        el('div', { class: 'post-meta', text: `${post.nickname} · ${formatTime(post.created_at)}` }),
+        el('div', { class: 'post-meta-row' }, [
+          el('span', { class: 'post-meta', text: `${post.nickname} · ${formatTime(post.created_at)}` }),
+          el('span', { class: 'post-badges' }, [
+            isNewPost ? el('span', { class: 'badge new', text: '新' }) : null,
+            totalReplies > 0 ? el('span', { class: 'badge replies', text: `${totalReplies} 条回应` }) : null,
+            newReplies > 0 ? el('span', { class: 'badge new-replies', text: `${newReplies} 条新回应` }) : null,
+          ]),
+        ]),
       ])
     );
   }
+
+  updateUnreadBadge();
 }
 
+function commentCount(postId) {
+  return allComments.filter((c) => c.post_id === postId).length;
+}
+
+function loadSeen(userId) {
+  const seenPosts = JSON.parse(localStorage.getItem('seenPosts_' + userId) || '[]');
+  const seenComments = JSON.parse(localStorage.getItem('seenComments_' + userId) || '[]');
+  return { seenPosts, seenComments };
+}
+
+function saveSeen(userId, seenPosts, seenComments) {
+  localStorage.setItem('seenPosts_' + userId, JSON.stringify(seenPosts));
+  localStorage.setItem('seenComments_' + userId, JSON.stringify(seenComments));
+}
+
+function markSeen(postId, comments) {
+  if (!currentUser) return;
+  const seen = loadSeen(currentUser.id);
+  if (!seen.seenPosts.includes(postId)) seen.seenPosts.push(postId);
+  for (const c of comments) {
+    if (!seen.seenComments.includes(c.id)) seen.seenComments.push(c.id);
+  }
+  saveSeen(currentUser.id, seen.seenPosts, seen.seenComments);
+  updateUnreadBadge();
+}
+
+function updateUnreadBadge() {
+  const badge = document.getElementById('nav-unread');
+  if (!badge || !currentUser) return;
+  const seen = loadSeen(currentUser.id);
+  const newPosts = allPosts.filter((p) => p.nickname !== profile.nickname && !seen.seenPosts.includes(p.id)).length;
+  const newReplies = allComments.filter((c) => c.nickname !== profile.nickname && !seen.seenComments.includes(c.id)).length;
+  const total = newPosts + newReplies;
+  if (total > 0) {
+    badge.textContent = total;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
 function monthLabel(month) {
   const [year, mon] = month.split('-');
   return `${year}年${Number(mon)}月`;
@@ -383,6 +443,7 @@ async function loadComments(postId, list) {
   list.innerHTML = '';
   try {
     const comments = await fetchComments(postId);
+    markSeen(postId, comments);
     if (!comments.length) {
       list.append(el('p', { class: 'empty', text: '还没有回应' }));
       return;
