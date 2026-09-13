@@ -26,6 +26,7 @@ function el(tag, props = {}, children = []) {
     else if (key === 'text') node.textContent = value;
     else if (key === 'value') node.value = value;
     else if (key.startsWith('on')) node.addEventListener(key.slice(2).toLowerCase(), value);
+    else if (key.startsWith('--')) node.style.setProperty(key, value);
     else node.setAttribute(key, value);
   }
   const kids = Array.isArray(children) ? children : [children];
@@ -47,6 +48,14 @@ function formatTime(iso) {
   const d = new Date(iso);
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function isMine(row) {
+  return !!currentUser && !!row && row.user_id === currentUser.id;
+}
+
+function authorClass(row) {
+  return isMine(row) ? 'from-me' : 'from-you';
 }
 
 function previewText(content) {
@@ -109,7 +118,7 @@ async function render() {
 function renderLogin() {
   app.innerHTML = '';
   app.append(
-    el('div', { class: 'login-card' }, [
+    el('div', { class: 'login-card enter-rise' }, [
       el('h1', { class: 'login-title', text: 'scj&zzh ❤' }),
       el('p', { class: 'login-sub', text: '只属于我们俩的悄悄话' }),
       el('input', { id: 'login-nickname', class: 'input', type: 'text', placeholder: '你是谁呀', onkeydown: (e) => { if (e.key === 'Enter') doLogin(); } }),
@@ -141,7 +150,7 @@ async function doLogin() {
 function renderMissingProfile() {
   app.innerHTML = '';
   app.append(
-    el('main', { class: 'container' }, [
+    el('main', { class: 'container enter-rise' }, [
       el('p', { text: '账号资料没配置好。请先在 Supabase 运行 supabase/schema.sql，并按 README 创建两个带 nickname 的用户。' }),
       el('button', {
         class: 'btn',
@@ -194,7 +203,9 @@ async function renderList() {
   main.append(el('a', { href: '#/write', class: 'btn block', text: '写一句悄悄话' }));
 
   const list = el('div', { id: 'post-list', class: 'post-list' }, [
-    el('p', { class: 'muted', text: '加载中…' }),
+    el('div', { class: 'skeleton' }),
+    el('div', { class: 'skeleton' }),
+    el('div', { class: 'skeleton' }),
   ]);
   main.append(list);
   app.append(main);
@@ -204,7 +215,7 @@ async function renderList() {
     allPosts = posts;
     allComments = comments;
     buildMonthOptions(posts);
-    renderFilteredList();
+    renderFilteredList({ animate: true });
   } catch (error) {
     document.getElementById('post-list').textContent = `加载失败：${error.message}`;
   }
@@ -219,14 +230,15 @@ function buildMonthOptions(posts) {
   for (const month of months) {
     select.append(el('option', { value: month, text: monthLabel(month) }));
   }
-  select.onchange = () => renderFilteredList();
-  search.oninput = () => renderFilteredList();
+  select.onchange = () => renderFilteredList({ animate: false });
+  search.oninput = () => renderFilteredList({ animate: false });
 }
 
-function renderFilteredList() {
+function renderFilteredList(opts = {}) {
   const list = document.getElementById('post-list');
   const keyword = document.getElementById('search-input').value.trim().toLowerCase();
   const month = document.getElementById('month-select').value;
+  const animate = !!opts.animate;
 
   const filtered = allPosts.filter((post) => {
     const inMonth = !month || (post.created_at || '').startsWith(month);
@@ -247,13 +259,15 @@ function renderFilteredList() {
   const seen = loadSeen(currentUser.id);
   for (const post of filtered) {
     const totalReplies = commentCount(post.id);
-    const isNewPost = post.nickname !== profile.nickname && !seen.seenPosts.includes(post.id);
+    const isNewPost = !isMine(post) && !seen.seenPosts.includes(post.id);
     const newReplies = allComments.filter(
-      (c) => c.post_id === post.id && c.nickname !== profile.nickname && !seen.seenComments.includes(c.id)
+      (c) => c.post_id === post.id && !isMine(c) && !seen.seenComments.includes(c.id)
     ).length;
 
+    const itemProps = { href: `#/post?id=${post.id}`, class: `post-item ${authorClass(post)}${animate ? ' list-anim' : ''}` };
+    if (animate) itemProps['--i'] = Math.min(filtered.indexOf(post), 8);
     list.append(
-      el('a', { href: `#/post?id=${post.id}`, class: 'post-item' }, [
+      el('a', itemProps, [
         el('div', { class: 'post-preview', text: matchPreview(post, keyword) }),
         el('div', { class: 'post-meta-row' }, [
           el('span', { class: 'post-meta', text: `${post.nickname} · ${formatTime(post.created_at)}` }),
@@ -290,6 +304,7 @@ function markSeen(postId, comments) {
   const seen = loadSeen(currentUser.id);
   if (!seen.seenPosts.includes(postId)) seen.seenPosts.push(postId);
   for (const c of comments) {
+    if (isMine(c)) continue;
     if (!seen.seenComments.includes(c.id)) seen.seenComments.push(c.id);
   }
   saveSeen(currentUser.id, seen.seenPosts, seen.seenComments);
@@ -300,8 +315,8 @@ function updateUnreadBadge() {
   const badge = document.getElementById('nav-unread');
   if (!badge || !currentUser) return;
   const seen = loadSeen(currentUser.id);
-  const newPosts = allPosts.filter((p) => p.nickname !== profile.nickname && !seen.seenPosts.includes(p.id)).length;
-  const newReplies = allComments.filter((c) => c.nickname !== profile.nickname && !seen.seenComments.includes(c.id)).length;
+  const newPosts = allPosts.filter((p) => !isMine(p) && !seen.seenPosts.includes(p.id)).length;
+  const newReplies = allComments.filter((c) => !isMine(c) && !seen.seenComments.includes(c.id)).length;
   const total = newPosts + newReplies;
   if (total > 0) {
     badge.textContent = total;
@@ -334,7 +349,7 @@ function renderWrite() {
   app.innerHTML = '';
   app.append(renderHeader('write'));
   app.append(
-    el('main', { class: 'container narrow' }, [
+    el('main', { class: 'container narrow enter-rise' }, [
       el('h2', { text: '写给你的悄悄话' }),
       el('textarea', { id: 'write-content', class: 'input area', rows: 14, placeholder: '把想说的话写在这里…' }),
       el('button', { class: 'btn', text: '说给你听', onclick: doPublish }),
@@ -363,7 +378,7 @@ async function doPublish() {
 async function renderPost(id) {
   app.innerHTML = '';
   app.append(renderHeader('list'));
-  const main = el('main', { class: 'container narrow' });
+  const main = el('main', { class: 'container narrow enter-rise' });
   app.append(main);
 
   if (!id) {
@@ -378,7 +393,7 @@ async function renderPost(id) {
       return;
     }
 
-    const article = el('article', { class: 'post' }, [
+    const article = el('article', { class: `post ${authorClass(post)}` }, [
       el('div', { class: 'post-meta', text: `${post.nickname} · ${formatTime(post.created_at)}` }),
       el('div', { class: 'post-content', text: post.content }),
     ]);
@@ -456,16 +471,18 @@ async function loadComments(postId, list) {
       }
     }
     const topLevel = comments.filter((c) => !c.parent_id);
-    for (const c of topLevel) {
-      list.append(renderComment(c, childrenByParent, postId));
-    }
+    topLevel.forEach((c, index) => {
+      const node = renderComment(c, childrenByParent, postId);
+      if (index < 8) node.style.setProperty('--i', index);
+      list.append(node);
+    });
   } catch (error) {
     list.textContent = `评论加载失败：${error.message}`;
   }
 }
 
 function renderComment(comment, childrenByParent, postId) {
-  const node = el('div', { class: 'comment' }, [
+  const node = el('div', { class: `comment comment-anim ${authorClass(comment)}` }, [
     el('div', { class: 'comment-meta', text: `${comment.nickname} · ${formatTime(comment.created_at)}` }),
     el('div', { class: 'comment-content', text: comment.content }),
     el('div', { class: 'comment-actions' }, [

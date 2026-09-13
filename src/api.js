@@ -13,7 +13,7 @@ export async function fetchProfile(userId) {
 export async function fetchPosts() {
   const { data, error } = await supabase
     .from('posts')
-    .select('id, nickname, content, created_at')
+    .select('id, user_id, nickname, content, created_at')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data || [];
@@ -22,7 +22,7 @@ export async function fetchPosts() {
 export async function fetchPost(id) {
   const { data, error } = await supabase
     .from('posts')
-    .select('id, nickname, content, created_at')
+    .select('id, user_id, nickname, content, created_at')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
@@ -32,7 +32,7 @@ export async function fetchPost(id) {
 export async function fetchComments(postId) {
   const { data, error } = await supabase
     .from('comments')
-    .select('id, post_id, parent_id, nickname, content, created_at')
+    .select('id, post_id, parent_id, user_id, nickname, content, created_at')
     .eq('post_id', postId)
     .order('created_at', { ascending: true });
   if (error) throw error;
@@ -78,7 +78,7 @@ export async function deleteComment(id) {
 export async function fetchAllComments() {
   const { data, error } = await supabase
     .from('comments')
-    .select('id, post_id, parent_id, nickname, content, created_at')
+    .select('id, post_id, parent_id, user_id, nickname, content, created_at')
     .order('created_at', { ascending: true });
   if (error) throw error;
   return data || [];
